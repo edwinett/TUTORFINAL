@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Tutor Virtual</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
+        #respuesta { background-color: #f4f4f4; border-radius: 8px; padding: 16px; min-height: 100px; }
+    </style>
+</head>
+<body>
+
+    <h1>Mi Tutor Virtual</h1>
+    <p>Haz clic en el botón para pedirle un cuento al robot.</p>
+
+    <button id="miBoton">Preguntar a la IA</button>
+
+    <h2>Respuesta de la IA:</h2>
+    <div id="respuesta">...esperando...</div>
+
+    <script>
+        // Este código se ejecuta en el NAVEGADOR (la Plaza Pública)
+
+        // 1. Encontramos el botón y el panel de respuesta
+        const miBoton = document.getElementById('miBoton');
+        const panelRespuesta = document.getElementById('respuesta');
+
+        // 2. Escuchamos cuando alguien hace clic
+        miBoton.onclick = async function() {
+
+            // 3. Mostramos un mensaje de "cargando"
+            panelRespuesta.innerText = "Pensando...";
+            miBoton.disabled = true;
+
+            // 4. ¡AQUÍ ESTÁ LA MAGIA!
+            // No llamamos a Google. Llamamos a NUESTRA "cocina" (/api/chat)
+            const response = await fetch('/api/chat');
+            const data = await response.json();
+
+            // 5. Mostramos la respuesta que nos dio la cocina
+            panelRespuesta.innerText = data.respuesta;
+            miBoton.disabled = false;
+        };
+    </script>
+
+</body>
+</html>
