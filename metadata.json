@@ -1,0 +1,8 @@
+{
+  "name": "Tutor Edwin Digital",
+  "description": "Una aplicación para compartir tu pantalla y recibir instrucciones en vivo, impulsadas por IA, sobre cómo realizar operaciones o usar software. Tu tutor digital personal.",
+  "requestFramePermissions": [
+    "display-capture",
+    "microphone"
+  ]
+}
