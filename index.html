@@ -6,42 +6,163 @@
     <title>Mi Tutor Virtual</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-        #respuesta { background-color: #f4f4f4; border-radius: 8px; padding: 16px; min-height: 100px; }
+        #respuesta { background-color: #f4f4f4; border-radius: 8px; padding: 16px; min-height: 100px; white-space: pre-wrap; }
+        #miPregunta { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { padding: 10px 15px; margin-top: 10px; cursor: pointer; }
     </style>
 </head>
 <body>
-
     <h1>Mi Tutor Virtual</h1>
-    <p>Haz clic en el botón para pedirle un cuento al robot.</p>
-
-    <button id="miBoton">Preguntar a la IA</button>
-
-    <h2>Respuesta de la IA:</h2>
+    
+    <p>Escribe tu pregunta o usa el botón de grabar:</p>
+    <textarea id="miPregunta" rows="3">¿Qué ves en esta pantalla?</textarea>
+    
+    <button id="miBoton">Preguntar (Texto)</button>
+    <button id="botonGrabar">Grabar Voz 🎙️</button>
+    <button id="botonPantalla">Analizar Pantalla 🖥️</button> <h2>Respuesta de la IA:</h2>
     <div id="respuesta">...esperando...</div>
 
-    <script>
-        // Este código se ejecuta en el NAVEGADOR (la Plaza Pública)
+    <video id="videoPreview" autoplay hidden></video>
+    <canvas id="canvasOculto" hidden></canvas>
 
-        // 1. Encontramos el botón y el panel de respuesta
+    <script>
+        // --- Referencias a los botones y cajas ---
         const miBoton = document.getElementById('miBoton');
+        const botonGrabar = document.getElementById('botonGrabar');
+        const botonPantalla = document.getElementById('botonPantalla'); // Nuevo
+        const miPregunta = document.getElementById('miPregunta');
         const panelRespuesta = document.getElementById('respuesta');
 
-        // 2. Escuchamos cuando alguien hace clic
-        miBoton.onclick = async function() {
+        // --- MAGIA 1: Escuchar tu voz (Speech-to-Text) ---
+        // (Este código es el mismo de antes)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            recognition.continuous = false;
+            botonGrabar.onclick = () => {
+                panelRespuesta.innerText = "¡Escuchando... habla ahora!";
+                botonGrabar.disabled = true;
+                recognition.start();
+            };
+            recognition.onresult = (event) => {
+                miPregunta.value = event.results[0][0].transcript;
+                enviarPreguntaSoloTexto(); // Llama a la función de solo texto
+            };
+            recognition.onend = () => { botonGrabar.disabled = false; };
+        } else {
+            botonGrabar.style.display = 'none';
+        }
 
-            // 3. Mostramos un mensaje de "cargando"
+        // --- MAGIA 2: Leer la respuesta en voz alta (Text-to-Speech) ---
+        // (Este código es el mismo de antes)
+        function leerRespuestaEnVozAlta(texto) {
+            const utterance = new SpeechSynthesisUtterance(texto);
+            utterance.lang = 'es-ES';
+            speechSynthesis.speak(utterance);
+        }
+
+        // --- Función para enviar SOLO TEXTO ---
+        miBoton.onclick = enviarPreguntaSoloTexto;
+        
+        async function enviarPreguntaSoloTexto() {
+            const preguntaUsuario = miPregunta.value;
+            if (!preguntaUsuario) return;
+            
+            // Llama a la función central SIN imagen
+            await enviarFetch(preguntaUsuario, null);
+        }
+
+        // --- ¡¡¡NUEVA MAGIA 3: Capturar Pantalla!!! ---
+        botonPantalla.onclick = async () => {
+            const preguntaUsuario = miPregunta.value;
+            if (!preguntaUsuario) {
+                alert("Por favor escribe una pregunta primero (ej: '¿Qué ves aquí?')");
+                return;
+            }
+
+            panelRespuesta.innerText = "Iniciando captura de pantalla... Por favor, comparte tu pantalla.";
+            
+            try {
+                // 1. Pide al usuario que comparta su pantalla
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                
+                const video = document.getElementById('videoPreview');
+                const canvas = document.getElementById('canvasOculto');
+                const ctx = canvas.getContext('2d');
+                
+                video.srcObject = stream;
+                
+                // Espera a que el video se cargue para saber el tamaño
+                video.onloadedmetadata = async () => {
+                    panelRespuesta.innerText = "¡Pantalla capturada! Analizando...";
+                    
+                    // 2. Dibuja el video en el canvas (¡El Screenshot!)
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    
+                    // 3. Detiene la captura de pantalla
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // 4. Convierte el screenshot a texto Base64
+                    // Usamos JPEG y calidad 0.8 para reducir el tamaño
+                    const imagenBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                    
+                    // 5. Llama a la función central CON la imagen
+                    await enviarFetch(preguntaUsuario, imagenBase64);
+                };
+
+            } catch (err) {
+                console.error("Error al capturar pantalla:", err);
+                panelRespuesta.innerText = "Error. ¿Cancelaste la captura de pantalla?";
+            }
+        };
+
+        // --- FUNCIÓN CENTRAL DE FETCH (¡MEJORADA!) ---
+        // Esta función ahora decide si enviar solo texto, o texto + imagen
+        
+        async function enviarFetch(pregunta, imagenBase64) {
             panelRespuesta.innerText = "Pensando...";
             miBoton.disabled = true;
+            botonGrabar.disabled = true;
+            botonPantalla.disabled = true;
 
-            // 4. ¡AQUÍ ESTÁ LA MAGIA!
-            // No llamamos a Google. Llamamos a NUESTRA "cocina" (/api/chat)
-            const response = await fetch('/api/chat');
-            const data = await response.json();
+            // Prepara el "cuerpo" del pedido
+            let body = { mi_pregunta: pregunta };
+            if (imagenBase64) {
+                body.mi_imagen = imagenBase64; // Añade la imagen si existe
+            }
 
-            // 5. Mostramos la respuesta que nos dio la cocina
-            panelRespuesta.innerText = data.respuesta;
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body) // Envía el cuerpo (con o sin imagen)
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                const respuestaTexto = data.respuesta;
+                panelRespuesta.innerText = respuestaTexto;
+                leerRespuestaEnVozAlta(respuestaTexto);
+
+            } catch (error) {
+                console.error("Error en el fetch:", error);
+                panelRespuesta.innerText = "¡Error! " + error.message;
+            }
+
+            // Reactiva los botones
             miBoton.disabled = false;
-        };
+            if (SpeechRecognition) { botonGrabar.disabled = false; }
+            botonPantalla.disabled = false;
+        }
+
     </script>
 
 </body>
