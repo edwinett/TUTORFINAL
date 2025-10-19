@@ -1,3 +1,5 @@
+// Este es tu NUEVO archivo: /api/chat.js
+
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
