@@ -8,6 +8,7 @@ const OPCIONES_LIMPIEZA = [
   { clave: 'resumen', nombre: 'Eliminar filas de totales/promedios y encabezados repetidos dentro de los datos' },
   { clave: 'textos', nombre: 'Normalizar textos de colegio, sede, jornada, etc. (espacios, mayúsculas y tildes), para que "San José" y "SAN JOSE " cuenten como el mismo' },
   { clave: 'genero', nombre: 'Estandarizar el género a F / M ("Femenino", "mujer", "f" → F)' },
+  { clave: 'zona', nombre: 'Estandarizar la zona a URBANO / RURAL ("Urbano", "U", "Cabecera" → URBANO; "Rural", "Resto" → RURAL)' },
   { clave: 'rango', nombre: 'Dejar vacíos los puntajes fuera de rango (0–100 por área, 0–500 el global)' },
   { clave: 'duplicados', nombre: 'Eliminar estudiantes repetidos (mismo identificador o nombre en el mismo año)' },
   { clave: 'calcularGlobal', nombre: 'Calcular el puntaje global cuando falte y estén las 5 áreas (fórmula oficial ICFES)' },
@@ -19,7 +20,7 @@ const estado = {
   datos: [],
   limpieza: null,
   desactualizado: false,
-  filtros: { anio: '', colegio: '', jornada: '', genero: '' },
+  filtros: { anio: '', colegio: '', municipio: '', zona: '', jornada: '', genero: '' },
   opciones: Object.fromEntries(OPCIONES_LIMPIEZA.map((o) => [o.clave, true])),
   ui: {
     pestana: 'cargar',
@@ -27,7 +28,7 @@ const estado = {
     comparar: { dim: 'colegio', filas: 'colegio', columnas: 'anio', metrica: 'global', dimPrueba: 'genero', a: '', b: '', puntajePrueba: 'global' },
     corr: { nivel: 'estudiantes', metodo: 'pearson', x: 'lectura', y: 'sociales' },
     informe: {
-      titulo: 'Informe de resultados Saber 11', autor: '', notas: '', dim: 'colegio',
+      titulo: 'Informe de resultados Saber 11', autor: '', notas: '', dims: ['colegio', 'municipio', 'zona'],
       secciones: { resumen: true, conclusiones: true, descriptivas: true, niveles: true, comparacion: true, evolucion: true, correlaciones: true, limpieza: true },
     },
   },
@@ -51,6 +52,7 @@ const letraColumna = (j) => { let s = ''; j++; while (j > 0) { const m = (j - 1)
 function etiqueta(dim, v) {
   if (v === '' || v == null) return '(sin dato)';
   if (dim === 'genero') return v === 'F' ? 'Femenino' : v === 'M' ? 'Masculino' : v;
+  if (dim === 'zona') return v === 'URBANO' ? 'Urbana' : v === 'RURAL' ? 'Rural' : v;
   return String(v);
 }
 
@@ -518,6 +520,20 @@ function conclusiones(datos) {
     c.push(`Entre los ${colegios.length} colegios, el promedio global más alto es el de <strong>${esc(colegios[0].clave)}</strong> (${fmt(colegios[0].m)}) y el más bajo el de <strong>${esc(colegios.at(-1).clave)}</strong> (${fmt(colegios.at(-1).m)}): una brecha de ${fmt(colegios[0].m - colegios.at(-1).m)} puntos${w ? (w.p < 0.05 ? ', estadísticamente significativa (p ' + (w.p < 0.001 ? '< 0,001' : '= ' + fmtP(w.p)) + ')' : ', que no resulta estadísticamente significativa') : ''}.`);
   }
 
+  const urb = datos.filter((r) => r.zona === 'URBANO'), rur = datos.filter((r) => r.zona === 'RURAL');
+  if (urb.length > 1 && rur.length > 1) {
+    const w = Est.welch(col(urb, 'global'), col(rur, 'global'));
+    if (w) {
+      const brechas = AREAS.map((a) => ({ a, d: Est.media(col(urb, a.clave)) - Est.media(col(rur, a.clave)) })).filter((x) => Number.isFinite(x.d)).sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+      c.push(`Por zona, el promedio global fue ${fmt(w.a.media)} en la zona urbana (${w.a.n} estudiantes) y ${fmt(w.b.media)} en la rural (${w.b.n}); una diferencia de <strong>${fmt(Math.abs(w.diferencia))} puntos</strong> a favor de la zona ${w.diferencia >= 0 ? 'urbana' : 'rural'}, que ${w.p < 0.05 ? 'es' : 'no es'} estadísticamente significativa (p ${w.p < 0.001 ? '< 0,001' : '= ' + fmtP(w.p)}).${brechas.length ? ` La mayor brecha por área está en ${brechas[0].a.nombre} (${fmt(Math.abs(brechas[0].d))} puntos).` : ''}`);
+    }
+  }
+
+  const municipios = agrupar(datos, 'municipio').filter((x) => x.clave !== '').map((x) => ({ ...x, m: Est.media(col(x.filas, 'global')) })).filter((x) => x.m != null).sort((a, b) => b.m - a.m);
+  if (municipios.length > 1) {
+    c.push(`Entre los ${municipios.length} municipios, el promedio global más alto es el de <strong>${esc(municipios[0].clave)}</strong> (${fmt(municipios[0].m)}) y el más bajo el de <strong>${esc(municipios.at(-1).clave)}</strong> (${fmt(municipios.at(-1).m)}).`);
+  }
+
   const f = datos.filter((r) => r.genero === 'F'), m = datos.filter((r) => r.genero === 'M');
   if (f.length > 1 && m.length > 1) {
     const w = Est.welch(col(f, 'global'), col(m, 'global'));
@@ -597,6 +613,7 @@ function tarjetaArchivo(a) {
   if (!puntajesOk) alertas += '<div class="alerta error">No se reconoció ninguna columna de puntajes. Revise la fila de encabezados o elija las columnas manualmente abajo.</div>';
   else if (puntajesOk < 6) alertas += `<div class="alerta aviso">Se reconocieron ${puntajesOk} de 6 columnas de puntaje. Si falta alguna, elíjala abajo.</div>`;
   if (a.mapeo.periodo < 0 && !a.anioManual) alertas += '<div class="alerta aviso">El archivo no tiene columna de año. Escriba el año en la casilla de arriba para poder comparar entre años.</div>';
+  if (a.mapeo.zona < 0 && !a.zonaManual) alertas += '<div class="alerta info">El archivo no tiene columna de zona (COLE_AREA_UBICACION). Si todo el archivo es de una sola zona, elíjala arriba para poder comparar urbana vs. rural.</div>';
   if (a.mapeo.colegio < 0 && !a.colegioManual) alertas += '<div class="alerta info">El archivo no tiene columna de colegio. Si es de un solo colegio, escriba su nombre arriba para poder compararlo con otros.</div>';
 
   return `<article class="tarjeta" data-archivo="${a.id}">
@@ -606,6 +623,8 @@ function tarjetaArchivo(a) {
       <label class="control">Fila de encabezados<input type="number" min="1" max="${filas.length}" data-accion="encabezado" value="${a.filaEncabezado + 1}"></label>
       <label class="control">Año (si no viene en el archivo)<input data-accion="anio" value="${esc(a.anioManual)}" placeholder="Ej: 2024"></label>
       <label class="control">Colegio (si no viene en el archivo)<input data-accion="colegio" value="${esc(a.colegioManual)}" placeholder="Nombre del colegio"></label>
+      <label class="control">Municipio (si no viene en el archivo)<input data-accion="municipio" value="${esc(a.municipioManual)}" placeholder="Ej: Rionegro"></label>
+      <label class="control">Zona (si no viene en el archivo)<select data-accion="zona">${opcionesHtml([['', '—'], ['URBANO', 'Urbana'], ['RURAL', 'Rural']], a.zonaManual)}</select></label>
     </div>
     <p class="nota">${nDatos} filas debajo de los encabezados · ${reconocidos.length} columnas reconocidas automáticamente</p>
     ${alertas}
@@ -637,6 +656,8 @@ function alCambiarArchivo(e) {
   } else if (accion === 'mapeo') a.mapeo[el.dataset.campo] = Number(el.value);
   else if (accion === 'anio') a.anioManual = el.value.trim();
   else if (accion === 'colegio') a.colegioManual = el.value.trim();
+  else if (accion === 'municipio') a.municipioManual = el.value.trim();
+  else if (accion === 'zona') a.zonaManual = el.value;
   estado.desactualizado = true;
   renderCargar();
 }
@@ -664,7 +685,7 @@ function procesarDatos() {
 function filasLegibles(datos) {
   const presentes = (c) => datos.some((r) => r[c] !== '' && r[c] != null);
   const textos = [['archivo', 'Archivo'], ['fila', 'Fila en el archivo'], ['id', 'Identificador'], ['nombre', 'Nombre'], ['anio', 'Año'], ['colegio', 'Colegio'], ['sede', 'Sede'],
-    ['municipio', 'Municipio'], ['jornada', 'Jornada'], ['genero', 'Género'], ['naturaleza', 'Naturaleza'], ['grupo', 'Grupo']].filter(([c]) => presentes(c));
+    ['municipio', 'Municipio'], ['zona', 'Zona'], ['jornada', 'Jornada'], ['genero', 'Género'], ['naturaleza', 'Naturaleza'], ['grupo', 'Grupo']].filter(([c]) => presentes(c));
   return datos.map((r) => {
     const o = {};
     for (const [c, t] of textos) o[t] = r[c];
@@ -732,7 +753,7 @@ function renderLimpiar() {
 // ============================================================
 
 function renderFiltros() {
-  const dims = ['anio', 'colegio', 'jornada', 'genero'].filter((k) => valores(estado.datos, k).some((v) => v !== ''));
+  const dims = ['anio', 'colegio', 'municipio', 'zona', 'jornada', 'genero'].filter((k) => valores(estado.datos, k).some((v) => v !== ''));
   const html = dims.map((k) => {
     const lista = [['', 'Todos'], ...valores(estado.datos, k).map((v) => [String(v), etiqueta(k, v)])];
     return `<label class="control">${esc(dimension(k).nombre)}<select data-filtro="${k}">${opcionesHtml(lista, estado.filtros[k])}</select></label>`;
@@ -947,15 +968,15 @@ function renderInforme() {
   if (!d.length) { cont.innerHTML = vacio(); return; }
   const u = estado.ui.informe;
   const dims = dimensionesDisponibles(d).filter((x) => x.clave !== 'anio').map((x) => [x.clave, x.nombre]);
-  if (!dims.some(([k]) => k === u.dim)) u.dim = dims[0]?.[0] ?? '';
   const previo = $('#informe-doc');
   cont.innerHTML = `<div class="tarjeta no-imprimir"><h2>Generar informe</h2>
       <p class="nota">El informe usa los filtros de arriba (${esc(descripcionFiltros())}). Para guardarlo en PDF, pulse "Imprimir / Guardar PDF" y elija "Guardar como PDF" como impresora.</p>
       <div class="fila-controles">
         <label class="control" style="flex:1 1 280px">Título<input data-informe="titulo" value="${esc(u.titulo)}"></label>
         <label class="control" style="flex:1 1 220px">Institución / autor<input data-informe="autor" value="${esc(u.autor)}" placeholder="Opcional"></label>
-        ${dims.length ? `<label class="control">Comparar por<select data-informe="dim">${opcionesHtml(dims, u.dim)}</select></label>` : ''}
       </div>
+      ${dims.length ? `<p class="nota" style="margin-bottom:0"><strong>Comparaciones a incluir</strong> (cada una con su tabla y gráfico${valores(d, 'anio').filter((v) => v !== '').length > 1 ? ', y su evolución por año' : ''}):</p>
+        <div class="opciones" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">${dims.map(([k, t]) => `<label><input type="checkbox" data-dim-informe="${k}"${u.dims.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>` : ''}
       <div class="opciones" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${SECCIONES.map(([k, t]) => `<label><input type="checkbox" data-seccion="${k}"${u.secciones[k] ? ' checked' : ''}> ${t}</label>`).join('')}</div>
       <label class="control">Observaciones propias (aparecen al final del informe)<textarea data-informe="notas" placeholder="Ej.: acciones de mejora acordadas por el consejo académico…">${esc(u.notas)}</textarea></label>
       <div class="fila-botones">
@@ -991,11 +1012,15 @@ function generarInforme() {
   if (s.conclusiones) html += `<section>${h2('Conclusiones principales')}<ul class="conclusiones">${conclusiones(d).map((c) => `<li>${c}</li>`).join('')}</ul></section>`;
   if (s.descriptivas) html += `<section>${h2('Estadísticas descriptivas')}${htmlDescriptivas(d)}${img(cfgHistograma(d, GLOBAL), 320)}</section>`;
   if (s.niveles) html += `<section>${h2('Niveles de desempeño')}${htmlNiveles(d)}${img(cfgNiveles(d, AREAS.slice(0, 4)), 300)}${img(cfgNiveles(d, [AREAS[4]]), 180)}</section>`;
-  if (s.comparacion && u.dim && valores(d, u.dim).length > 1) {
-    html += `<section>${h2(`Comparación por ${dimension(u.dim).nombre.toLowerCase()}`)}${htmlComparacion(d, u.dim)}${img(cfgComparacionAreas(d, u.dim), 360)}</section>`;
+  if (s.comparacion) {
+    for (const k of DIMENSIONES.map((x) => x.clave).filter((x) => u.dims.includes(x) && x !== 'anio')) {
+      if (valores(d, k).filter((v) => v !== '').length < 2) continue;
+      html += `<section>${h2(`Comparación por ${dimension(k).nombre.toLowerCase()}`)}${htmlComparacion(d, k)}${img(cfgComparacionAreas(d, k), 360)}
+        ${anios.length > 1 ? `<h3>${esc(dimension(k).nombre)} por año — Puntaje Global</h3>${htmlCruzada(d, k, 'anio', GLOBAL)}` : ''}</section>`;
+    }
   }
   if (s.evolucion && anios.length > 1) {
-    html += `<section>${h2('Evolución por año')}${htmlCruzada(d, colegios.length > 1 ? 'colegio' : (u.dim || 'colegio'), 'anio', GLOBAL)}
+    html += `<section>${h2('Evolución por año')}${colegios.length > 1 && !(s.comparacion && u.dims.includes('colegio')) ? htmlCruzada(d, 'colegio', 'anio', GLOBAL) : ''}
       ${img(cfgEvolucion(d, 'areas', GLOBAL), 340)}${colegios.length > 1 ? img(cfgEvolucion(d, 'colegio', GLOBAL), 340) : ''}</section>`;
   }
   if (s.correlaciones) {
@@ -1111,6 +1136,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t.dataset.opcion) { estado.opciones[t.dataset.opcion] = t.checked; estado.desactualizado = true; }
     else if (t.dataset.ui) { asignarUI(t.dataset.ui, t.value); render(); }
     else if (t.dataset.seccion) estado.ui.informe.secciones[t.dataset.seccion] = t.checked;
+    else if (t.dataset.dimInforme) {
+      const lista = estado.ui.informe.dims.filter((k) => k !== t.dataset.dimInforme);
+      estado.ui.informe.dims = t.checked ? [...lista, t.dataset.dimInforme] : lista;
+    }
     else if (t.dataset.informe) estado.ui.informe[t.dataset.informe] = t.value;
   });
   document.body.addEventListener('input', (e) => {

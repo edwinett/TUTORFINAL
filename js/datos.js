@@ -51,6 +51,13 @@ const Datos = (() => {
     return c;
   }
 
+  function estandarZona(v) {
+    const c = categoria(v);
+    if (/^(U|URB|URBANO|URBANA|CABECERA|CABECERA MUNICIPAL)$/.test(c)) return 'URBANO';
+    if (/^(R|RURAL|RESTO|CENTRO POBLADO|RURAL DISPERSO|CENTRO POBLADO Y RURAL DISPERSO)$/.test(c)) return 'RURAL';
+    return c;
+  }
+
   // --- Lectura de archivos ---
   function parsearCSV(texto) {
     texto = texto.replace(/^﻿/, '');
@@ -105,6 +112,7 @@ const Datos = (() => {
     });
     if (campo.numerico && /(desemp|nivel|percentil|decil|ranking|puesto|posicion|estrato)/.test(h)) s = 0;
     if (campo.clave === 'id' && /(tipo|nombre)/.test(h)) s = 0;
+    if (campo.clave === 'zona' && /(punt|desemp|nivel|codigo|cod_)/.test(h)) s = 0;
     if (campo.clave === 'colegio' && /(codigo|cod_|dane|sede|mcpio|depto|municipio|departamento)/.test(h)) s = 0;
     if (campo.clave === 'nombre' && /(cole|establecimiento|institucion|sede|mcpio|municipio|depto)/.test(h)) s = 0;
     return s;
@@ -159,7 +167,7 @@ const Datos = (() => {
       const d = detectarEncabezado(hojas[n]);
       if (d.puntos > mejor) { mejor = d.puntos; hoja = n; fila = d.fila; }
     }
-    const archivo = { id: ++contador, nombre, hojas, hoja, filaEncabezado: fila, encabezados: [], mapeo: {}, anioManual: '', colegioManual: '' };
+    const archivo = { id: ++contador, nombre, hojas, hoja, filaEncabezado: fila, encabezados: [], mapeo: {}, anioManual: '', colegioManual: '', municipioManual: '', zonaManual: '' };
     aplicarEncabezado(archivo);
     const anioNombre = aAnio(nombre);
     if (archivo.mapeo.periodo < 0 && anioNombre) archivo.anioManual = String(anioNombre);
@@ -185,6 +193,7 @@ const Datos = (() => {
     { clave: 'filasResumen', texto: 'Filas de totales / promedios eliminadas', tipo: 'correccion' },
     { clave: 'textos', texto: 'Celdas de texto normalizadas (espacios, mayúsculas, tildes)', tipo: 'correccion' },
     { clave: 'genero', texto: 'Valores de género estandarizados a F / M', tipo: 'correccion' },
+    { clave: 'zona', texto: 'Valores de zona estandarizados a URBANO / RURAL', tipo: 'correccion' },
     { clave: 'numerosCorregidos', texto: 'Puntajes escritos como texto convertidos a número (comas, espacios, "pts")', tipo: 'correccion' },
     { clave: 'noNumericos', texto: 'Puntajes con texto no numérico convertidos en vacío', tipo: 'correccion' },
     { clave: 'fueraRango', texto: 'Puntajes fuera de rango convertidos en vacío', tipo: 'correccion' },
@@ -194,6 +203,7 @@ const Datos = (() => {
     { clave: 'globalInconsistente', texto: 'Puntaje global que no coincide con las áreas (solo aviso)', tipo: 'aviso' },
     { clave: 'sinAnio', texto: 'Registros sin año (asigne uno en el paso 1)', tipo: 'aviso' },
     { clave: 'sinColegio', texto: 'Registros sin colegio (asigne uno en el paso 1)', tipo: 'aviso' },
+    { clave: 'zonaDesconocida', texto: 'Valores de zona que no se reconocieron como urbana o rural (revíselos)', tipo: 'aviso' },
     { clave: 'sinDuplicadoPosible', texto: 'No se buscaron duplicados en archivos sin identificador ni nombre', tipo: 'aviso' },
   ];
 
@@ -242,6 +252,15 @@ const Datos = (() => {
           r[c] = v;
         }
         if (!r.colegio && a.colegioManual) r.colegio = op.textos ? categoria(a.colegioManual) : limpiarTexto(a.colegioManual);
+        if (!r.municipio && a.municipioManual) r.municipio = op.textos ? categoria(a.municipioManual) : limpiarTexto(a.municipioManual);
+
+        const zOrig = limpiarTexto(celda('zona')) || limpiarTexto(a.zonaManual);
+        r.zona = zOrig;
+        if (zOrig && op.zona) {
+          r.zona = estandarZona(zOrig);
+          if (r.zona !== zOrig) sumar('zona');
+          if (!['URBANO', 'RURAL'].includes(r.zona)) { sumar('zonaDesconocida'); anotar(r, 'Zona', zOrig, 'No se reconoció como urbana o rural'); }
+        } else if (zOrig && op.textos) r.zona = categoria(zOrig);
 
         const gOrig = limpiarTexto(celda('genero'));
         r.genero = gOrig;
@@ -320,9 +339,10 @@ const Datos = (() => {
     };
     const normal = () => Math.sqrt(-2 * Math.log(1 - azar())) * Math.cos(2 * Math.PI * azar());
     const colegios = [
-      { nombre: 'Institución Educativa San José', naturaleza: 'OFICIAL', jornada: 'MAÑANA', efecto: 2 },
-      { nombre: 'Colegio Nuestra Señora del Carmen', naturaleza: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 7 },
-      { nombre: 'I.E. Técnico Industrial', naturaleza: 'OFICIAL', jornada: 'TARDE', efecto: -3 },
+      { nombre: 'Institución Educativa San José', naturaleza: 'OFICIAL', jornada: 'MAÑANA', efecto: 2, municipio: 'MEDELLÍN', zona: 'URBANO' },
+      { nombre: 'Colegio Nuestra Señora del Carmen', naturaleza: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 7, municipio: 'MEDELLÍN', zona: 'URBANO' },
+      { nombre: 'I.E. Técnico Industrial', naturaleza: 'OFICIAL', jornada: 'TARDE', efecto: -3, municipio: 'RIONEGRO', zona: 'URBANO' },
+      { nombre: 'I.E. Rural La Esperanza', naturaleza: 'OFICIAL', jornada: 'MAÑANA', efecto: -7, municipio: 'RIONEGRO', zona: 'RURAL' },
     ];
     const medias = { lectura: 53, matematicas: 50, sociales: 48, naturales: 49, ingles: 51 };
     const filas = [
@@ -330,7 +350,8 @@ const Datos = (() => {
       ['Generado para probar la aplicación. No corresponde a estudiantes reales.'],
       [],
       ['ESTU_CONSECUTIVO', 'PERIODO', 'COLE_NOMBRE_ESTABLECIMIENTO', 'COLE_JORNADA', 'COLE_NATURALEZA', 'GRUPO', 'ESTU_GENERO',
-        'PUNT_LECTURA_CRITICA', 'PUNT_MATEMATICAS', 'PUNT_SOCIALES_CIUDADANAS', 'PUNT_C_NATURALES', 'PUNT_INGLES', 'PUNT_GLOBAL'],
+        'PUNT_LECTURA_CRITICA', 'PUNT_MATEMATICAS', 'PUNT_SOCIALES_CIUDADANAS', 'PUNT_C_NATURALES', 'PUNT_INGLES', 'PUNT_GLOBAL',
+        'COLE_MCPIO_UBICACION', 'COLE_AREA_UBICACION'],
     ];
     let consecutivo = 1000;
     for (const anio of [2022, 2023, 2024]) {
@@ -347,7 +368,7 @@ const Datos = (() => {
           const global = calcularGlobal(p.lectura, p.matematicas, p.sociales, p.naturales, p.ingles);
           const genero = azar() < 0.52 ? 'F' : 'M';
           filas.push([`SB11${anio}${consecutivo++}`, Number(`${anio}2`), col.nombre, col.jornada, col.naturaleza,
-            `11-${1 + Math.floor(azar() * 3)}`, genero, p.lectura, p.matematicas, p.sociales, p.naturales, p.ingles, global]);
+            `11-${1 + Math.floor(azar() * 3)}`, genero, p.lectura, p.matematicas, p.sociales, p.naturales, p.ingles, global, col.municipio, col.zona]);
         }
       });
     }
@@ -361,6 +382,7 @@ const Datos = (() => {
     fila(40)[12] = ''; fila(41)[12] = ''; // global faltante (se calcula)
     fila(50)[9] = 'ausente'; fila(51)[10] = 'xx';
     fila(60)[3] = 'Mañana ';
+    fila(80)[13] = 'Medellin'; fila(81)[14] = 'Urbana '; fila(82)[14] = 'U';
     const extra = [datos[5].slice(), datos[6].slice(), [], datos[70].slice(), [], filas[3].slice()];
     filas.push(...extra, ['PROMEDIO', '', '', '', '', '', '', 52, 50, 48, 49, 51, 250]);
     return { nombre: 'ejemplo_saber11_ficticio.xlsx', hojas: { Resultados: filas } };
