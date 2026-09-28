@@ -7,11 +7,44 @@
   <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
+  <div id="acceso" class="acceso">
+    <div class="acceso-panel">
+      <section class="acceso-info">
+        <div class="acceso-marca"><span class="logo">S11</span> Análisis Saber 11</div>
+        <h1>Plataforma de análisis de resultados del examen Saber 11°</h1>
+        <p>Cargue los resultados, límpielos y obtenga estadísticas, brechas educativas, niveles de desempeño e informes listos para compartir.</p>
+        <ul class="acceso-lista">
+          <li><strong>Puntajes promedio</strong> y su evolución entre años</li>
+          <li><strong>Brechas</strong> por nivel socioeconómico, sector, zona y sexo</li>
+          <li><strong>Niveles de desempeño</strong> por prueba</li>
+          <li><strong>Resultados territoriales</strong>: departamentos, ETC, municipios y colegios</li>
+          <li><strong>Informe completo</strong> con conclusiones, en PDF y Excel</li>
+        </ul>
+        <p class="acceso-privado">🔒 Los datos de los estudiantes se procesan solo en su navegador. No se envían ni se guardan en ningún servidor.</p>
+      </section>
+      <form id="form-acceso" class="acceso-form" autocomplete="on">
+        <h2 id="acceso-titulo">Ingresar</h2>
+        <p id="acceso-desc" class="nota"></p>
+        <label class="control">Nombre<input id="acc-nombre" autocomplete="name" required></label>
+        <label class="control">Institución o entidad<input id="acc-institucion" autocomplete="organization" placeholder="Opcional"></label>
+        <label class="control">Contraseña<input type="password" id="acc-clave" autocomplete="current-password" required></label>
+        <label class="control" id="acc-confirmar-caja" hidden>Confirmar contraseña<input type="password" id="acc-confirmar" autocomplete="new-password"></label>
+        <div id="acc-error" class="alerta error" hidden></div>
+        <button class="btn" type="submit" id="acc-boton">Ingresar</button>
+        <button type="button" class="btn-texto" id="acc-olvido">¿Olvidó su contraseña?</button>
+        <p class="nota acceso-aviso">La contraseña se guarda solo en este navegador y evita que otras personas usen la app en este computador.</p>
+      </form>
+    </div>
+  </div>
+
+  <div id="app" hidden>
   <header class="cabecera">
-    <div class="contenedor">
-      <h1>📊 Análisis Saber 11</h1>
-      <p>Estadísticas, gráficos, comparaciones, correlaciones e informes de las pruebas Saber 11.
-        <strong>Todo se procesa en su navegador:</strong> los datos de los estudiantes no se envían a ningún servidor.</p>
+    <div class="contenedor cabecera-fila">
+      <div>
+        <h1>📊 Análisis Saber 11</h1>
+        <p>Estadísticas, brechas, niveles de desempeño e informes del examen Saber 11°. <strong>Los datos se procesan solo en su navegador.</strong></p>
+      </div>
+      <div class="usuario"><span id="usuario-nombre"></span><button id="btn-salir" class="btn-salir">Salir</button></div>
     </div>
   </header>
 
@@ -61,6 +94,8 @@
     <section class="pestana" id="tab-informe" hidden></section>
   </main>
 
+  </div>
+
   <div id="avisos" class="avisos" aria-live="polite"></div>
 
   <script src="js/vendor/xlsx.full.min.js"></script>
@@ -69,5 +104,7 @@
   <script src="js/estadistica.js"></script>
   <script src="js/datos.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/informe.js"></script>
+  <script src="js/acceso.js"></script>
 </body>
 </html>

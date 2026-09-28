@@ -58,6 +58,19 @@ const Datos = (() => {
     return c;
   }
 
+  function estandarSector(v) {
+    const c = categoria(v).replace(/_/g, ' ');
+    if (/^(OFICIAL|PUBLICO|PUBLICA|OFICIALES)$/.test(c)) return 'OFICIAL';
+    if (/^(NO OFICIAL|NO OFICIALES|PRIVADO|PRIVADA|NOOFICIAL)$/.test(c)) return 'NO OFICIAL';
+    return c;
+  }
+
+  function estandarNSE(v) {
+    const c = categoria(v);
+    const m = c.match(/^(?:NSE|NIVEL)?\s*([1-4])$/);
+    return m ? `NSE${m[1]}` : c;
+  }
+
   // --- Lectura de archivos ---
   function parsearCSV(texto) {
     texto = texto.replace(/^﻿/, '');
@@ -194,6 +207,8 @@ const Datos = (() => {
     { clave: 'textos', texto: 'Celdas de texto normalizadas (espacios, mayúsculas, tildes)', tipo: 'correccion' },
     { clave: 'genero', texto: 'Valores de género estandarizados a F / M', tipo: 'correccion' },
     { clave: 'zona', texto: 'Valores de zona estandarizados a URBANO / RURAL', tipo: 'correccion' },
+    { clave: 'sector', texto: 'Valores de sector estandarizados a OFICIAL / NO OFICIAL', tipo: 'correccion' },
+    { clave: 'nse', texto: 'Niveles socioeconómicos estandarizados a NSE1 – NSE4', tipo: 'correccion' },
     { clave: 'numerosCorregidos', texto: 'Puntajes escritos como texto convertidos a número (comas, espacios, "pts")', tipo: 'correccion' },
     { clave: 'noNumericos', texto: 'Puntajes con texto no numérico convertidos en vacío', tipo: 'correccion' },
     { clave: 'fueraRango', texto: 'Puntajes fuera de rango convertidos en vacío', tipo: 'correccion' },
@@ -245,7 +260,7 @@ const Datos = (() => {
         const r = { archivo: a.nombre, fila: i + 1 };
         r.id = limpiarTexto(celda('id'));
         r.nombre = limpiarTexto(celda('nombre'));
-        for (const c of ['colegio', 'sede', 'municipio', 'jornada', 'naturaleza', 'grupo']) {
+        for (const c of ['colegio', 'sede', 'departamento', 'etc', 'municipio', 'jornada', 'naturaleza', 'nse', 'grupo']) {
           const orig = limpiarTexto(celda(c));
           let v = orig;
           if (op.textos && v) { v = categoria(v); if (v !== String(celda(c) ?? '')) sumar('textos'); }
@@ -253,6 +268,13 @@ const Datos = (() => {
         }
         if (!r.colegio && a.colegioManual) r.colegio = op.textos ? categoria(a.colegioManual) : limpiarTexto(a.colegioManual);
         if (!r.municipio && a.municipioManual) r.municipio = op.textos ? categoria(a.municipioManual) : limpiarTexto(a.municipioManual);
+
+        if (op.zona) {
+          if (r.naturaleza) { const v = estandarSector(r.naturaleza); if (v !== r.naturaleza) sumar('sector'); r.naturaleza = v; }
+          const nseOrig = limpiarTexto(celda('nse'));
+          if (nseOrig) { const v = estandarNSE(nseOrig); if (v !== nseOrig) sumar('nse'); r.nse = v; }
+        }
+        r.region = regionDe(r.departamento);
 
         const zOrig = limpiarTexto(celda('zona')) || limpiarTexto(a.zonaManual);
         r.zona = zOrig;
@@ -330,7 +352,7 @@ const Datos = (() => {
 
   // --- Datos de ejemplo (ficticios y con errores a propósito, para probar la limpieza) ---
   function generarEjemplo() {
-    let semilla = 20240917;
+    let semilla = 20250917;
     const azar = () => {
       semilla |= 0; semilla = (semilla + 0x6d2b79f5) | 0;
       let t = Math.imul(semilla ^ (semilla >>> 15), 1 | semilla);
@@ -338,53 +360,83 @@ const Datos = (() => {
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
     const normal = () => Math.sqrt(-2 * Math.log(1 - azar())) * Math.cos(2 * Math.PI * azar());
+    const elegir = (pesos) => { let x = azar() * pesos.reduce((a, b) => a + b, 0); for (let i = 0; i < pesos.length; i++) { x -= pesos[i]; if (x < 0) return i; } return pesos.length - 1; };
+    // nse: probabilidad de NSE 1..4 según el tipo de colegio
     const colegios = [
-      { nombre: 'Institución Educativa San José', naturaleza: 'OFICIAL', jornada: 'MAÑANA', efecto: 2, municipio: 'MEDELLÍN', zona: 'URBANO' },
-      { nombre: 'Colegio Nuestra Señora del Carmen', naturaleza: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 7, municipio: 'MEDELLÍN', zona: 'URBANO' },
-      { nombre: 'I.E. Técnico Industrial', naturaleza: 'OFICIAL', jornada: 'TARDE', efecto: -3, municipio: 'RIONEGRO', zona: 'URBANO' },
-      { nombre: 'I.E. Rural La Esperanza', naturaleza: 'OFICIAL', jornada: 'MAÑANA', efecto: -7, municipio: 'RIONEGRO', zona: 'RURAL' },
+      { nombre: 'Institución Educativa San José', depto: 'ANTIOQUIA', mcpio: 'MEDELLÍN', zona: 'URBANO', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: 0, nse: [2, 5, 3, 1] },
+      { nombre: 'Colegio Nuestra Señora del Carmen', depto: 'ANTIOQUIA', mcpio: 'MEDELLÍN', zona: 'URBANO', sector: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 2, nse: [0.3, 1.5, 4, 5] },
+      { nombre: 'I.E. Técnico Industrial', depto: 'ANTIOQUIA', mcpio: 'RIONEGRO', zona: 'URBANO', sector: 'OFICIAL', jornada: 'TARDE', efecto: -1, nse: [2, 5, 3, 0.7] },
+      { nombre: 'I.E. Rural La Esperanza', depto: 'ANTIOQUIA', mcpio: 'RIONEGRO', zona: 'RURAL', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: -3, nse: [6, 4, 1, 0.2] },
+      { nombre: 'Gimnasio Campestre Los Andes', depto: 'ANTIOQUIA', mcpio: 'RIONEGRO', zona: 'RURAL', sector: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 3, nse: [0.1, 0.8, 3, 6] },
+      { nombre: 'Colegio Santander de Bucaramanga', depto: 'SANTANDER', mcpio: 'BUCARAMANGA', zona: 'URBANO', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: 3, nse: [1.5, 5, 3.5, 1] },
+      { nombre: 'Colegio La Salle Bucaramanga', depto: 'SANTANDER', mcpio: 'BUCARAMANGA', zona: 'URBANO', sector: 'NO OFICIAL', jornada: 'COMPLETA', efecto: 3, nse: [0.2, 1.5, 4, 5] },
+      { nombre: 'I.E. Rural Girón', depto: 'SANTANDER', mcpio: 'GIRÓN', zona: 'RURAL', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: -2, nse: [5, 4.5, 1, 0.2] },
+      { nombre: 'I.E. Integrado Quibdó', depto: 'CHOCÓ', mcpio: 'QUIBDÓ', zona: 'URBANO', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: -8, nse: [6, 4, 1, 0.2] },
+      { nombre: 'I.E. Rural San Isidro', depto: 'CHOCÓ', mcpio: 'QUIBDÓ', zona: 'RURAL', sector: 'OFICIAL', jornada: 'MAÑANA', efecto: -10, nse: [8, 2.5, 0.5, 0.1] },
     ];
-    const medias = { lectura: 53, matematicas: 50, sociales: 48, naturales: 49, ingles: 51 };
+    const medias = { lectura: 52, matematicas: 50, sociales: 47, naturales: 48, ingles: 49 };
+    const efectoNSE = [-4, -1.3, 1.3, 4];
+    const encabezados = ['ESTU_CONSECUTIVO', 'PERIODO', 'COLE_NOMBRE_ESTABLECIMIENTO', 'COLE_DEPTO_UBICACION', 'COLE_MCPIO_UBICACION', 'COLE_AREA_UBICACION',
+      'COLE_NATURALEZA', 'COLE_JORNADA', 'GRUPO', 'ESTU_GENERO', 'ESTU_NSE_INDIVIDUAL',
+      'PUNT_LECTURA_CRITICA', 'PUNT_MATEMATICAS', 'PUNT_SOCIALES_CIUDADANAS', 'PUNT_C_NATURALES', 'PUNT_INGLES', 'PUNT_GLOBAL'];
+    const c = Object.fromEntries(encabezados.map((h, i) => [h, i]));
     const filas = [
       ['RESULTADOS PRUEBAS SABER 11 — DATOS FICTICIOS DE EJEMPLO'],
       ['Generado para probar la aplicación. No corresponde a estudiantes reales.'],
       [],
-      ['ESTU_CONSECUTIVO', 'PERIODO', 'COLE_NOMBRE_ESTABLECIMIENTO', 'COLE_JORNADA', 'COLE_NATURALEZA', 'GRUPO', 'ESTU_GENERO',
-        'PUNT_LECTURA_CRITICA', 'PUNT_MATEMATICAS', 'PUNT_SOCIALES_CIUDADANAS', 'PUNT_C_NATURALES', 'PUNT_INGLES', 'PUNT_GLOBAL',
-        'COLE_MCPIO_UBICACION', 'COLE_AREA_UBICACION'],
+      encabezados,
     ];
     let consecutivo = 1000;
-    for (const anio of [2022, 2023, 2024]) {
-      colegios.forEach((col, ci) => {
-        const n = 45 + Math.floor(azar() * 30);
+    for (const anio of [2021, 2022, 2023, 2024, 2025]) {
+      colegios.forEach((col) => {
+        const n = 28 + Math.floor(azar() * 22) - (anio >= 2024 && col.nse[0] > 4 ? 6 : 0);
         for (let k = 0; k < n; k++) {
+          const nse = elegir(col.nse);
+          const genero = azar() < 0.54 ? 'F' : 'M';
           const z = normal();
-          const tendencia = (anio - 2022) * (ci === 2 ? 2.5 : 1);
+          const tendencia = (anio - 2021) * 0.6;
           const p = {};
           for (const [clave, m] of Object.entries(medias)) {
-            const extra = clave === 'ingles' && ci === 1 ? 6 : 0;
-            p[clave] = Math.max(0, Math.min(100, Math.round(m + col.efecto + tendencia + extra + 10 * (0.75 * z + 0.66 * normal()))));
+            const sexo = genero === 'M' ? (clave === 'matematicas' || clave === 'naturales' ? 3 : 1) : (clave === 'lectura' ? 0.5 : 0);
+            p[clave] = Math.max(0, Math.min(100, Math.round(m + col.efecto + efectoNSE[nse] + tendencia + sexo + 9 * (0.75 * z + 0.66 * normal()))));
           }
           const global = calcularGlobal(p.lectura, p.matematicas, p.sociales, p.naturales, p.ingles);
-          const genero = azar() < 0.52 ? 'F' : 'M';
-          filas.push([`SB11${anio}${consecutivo++}`, Number(`${anio}2`), col.nombre, col.jornada, col.naturaleza,
-            `11-${1 + Math.floor(azar() * 3)}`, genero, p.lectura, p.matematicas, p.sociales, p.naturales, p.ingles, global, col.municipio, col.zona]);
+          const fila = [];
+          fila[c.ESTU_CONSECUTIVO] = `SB11${anio}${consecutivo++}`;
+          fila[c.PERIODO] = Number(`${anio}2`);
+          fila[c.COLE_NOMBRE_ESTABLECIMIENTO] = col.nombre;
+          fila[c.COLE_DEPTO_UBICACION] = col.depto;
+          fila[c.COLE_MCPIO_UBICACION] = col.mcpio;
+          fila[c.COLE_AREA_UBICACION] = col.zona;
+          fila[c.COLE_NATURALEZA] = col.sector;
+          fila[c.COLE_JORNADA] = col.jornada;
+          fila[c.GRUPO] = `11-${1 + Math.floor(azar() * 3)}`;
+          fila[c.ESTU_GENERO] = genero;
+          fila[c.ESTU_NSE_INDIVIDUAL] = `NSE${nse + 1}`;
+          fila[c.PUNT_LECTURA_CRITICA] = p.lectura;
+          fila[c.PUNT_MATEMATICAS] = p.matematicas;
+          fila[c.PUNT_SOCIALES_CIUDADANAS] = p.sociales;
+          fila[c.PUNT_C_NATURALES] = p.naturales;
+          fila[c.PUNT_INGLES] = p.ingles;
+          fila[c.PUNT_GLOBAL] = global;
+          filas.push(fila);
         }
       });
     }
     // Errores típicos de un Excel real, para que la limpieza tenga trabajo.
     const datos = filas.slice(4);
     const fila = (i) => datos[i % datos.length];
-    fila(3)[2] = '  institución educativa san josé '; // espacios y minúsculas
-    fila(10)[6] = 'Femenino'; fila(11)[6] = 'masculino'; fila(12)[6] = 'f';
-    fila(20)[7] = '58,0'; fila(21)[8] = '47 pts'; fila(22)[11] = 'N/A';
-    fila(30)[8] = 150; // fuera de rango
-    fila(40)[12] = ''; fila(41)[12] = ''; // global faltante (se calcula)
-    fila(50)[9] = 'ausente'; fila(51)[10] = 'xx';
-    fila(60)[3] = 'Mañana ';
-    fila(80)[13] = 'Medellin'; fila(81)[14] = 'Urbana '; fila(82)[14] = 'U';
+    fila(3)[c.COLE_NOMBRE_ESTABLECIMIENTO] = '  institución educativa san josé ';
+    fila(10)[c.ESTU_GENERO] = 'Femenino'; fila(11)[c.ESTU_GENERO] = 'masculino'; fila(12)[c.ESTU_GENERO] = 'f';
+    fila(20)[c.PUNT_LECTURA_CRITICA] = '58,0'; fila(21)[c.PUNT_MATEMATICAS] = '47 pts'; fila(22)[c.PUNT_INGLES] = 'N/A';
+    fila(30)[c.PUNT_MATEMATICAS] = 150;
+    fila(40)[c.PUNT_GLOBAL] = ''; fila(41)[c.PUNT_GLOBAL] = '';
+    fila(50)[c.PUNT_SOCIALES_CIUDADANAS] = 'ausente'; fila(51)[c.PUNT_C_NATURALES] = 'xx';
+    fila(60)[c.COLE_JORNADA] = 'Mañana ';
+    fila(80)[c.COLE_MCPIO_UBICACION] = 'Medellin'; fila(81)[c.COLE_AREA_UBICACION] = 'Urbana '; fila(82)[c.COLE_AREA_UBICACION] = 'U';
+    fila(90)[c.COLE_NATURALEZA] = 'Público'; fila(91)[c.ESTU_NSE_INDIVIDUAL] = 2; fila(92)[c.COLE_DEPTO_UBICACION] = 'Antioquia';
     const extra = [datos[5].slice(), datos[6].slice(), [], datos[70].slice(), [], filas[3].slice()];
-    filas.push(...extra, ['PROMEDIO', '', '', '', '', '', '', 52, 50, 48, 49, 51, 250]);
+    filas.push(...extra, ['PROMEDIO', '', '', '', '', '', '', '', '', '', '', 52, 50, 48, 49, 51, 250]);
     return { nombre: 'ejemplo_saber11_ficticio.xlsx', hojas: { Resultados: filas } };
   }
 

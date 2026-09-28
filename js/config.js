@@ -46,11 +46,14 @@ const CAMPOS = [
   { clave: 'periodo', nombre: 'Año / periodo', sinonimos: ['periodo', 'ano', 'anio', 'year', 'vigencia', 'cohorte', 'fecha_presentacion', 'fecha'] },
   { clave: 'colegio', nombre: 'Colegio / institución', sinonimos: ['cole_nombre_establecimiento', 'nombre_establecimiento', 'establecimiento', 'institucion_educativa', 'institucion', 'nombre_institucion', 'colegio', 'nombre_colegio', 'ie'] },
   { clave: 'sede', nombre: 'Sede', sinonimos: ['cole_nombre_sede', 'nombre_sede', 'sede'] },
+  { clave: 'departamento', nombre: 'Departamento', sinonimos: ['cole_depto_ubicacion', 'nombre_departamento', 'departamento', 'depto'] },
+  { clave: 'etc', nombre: 'Entidad territorial certificada (ETC)', sinonimos: ['cole_etc', 'etc', 'nombre_etc', 'entidad_territorial_certificada', 'entidad_territorial', 'secretaria_de_educacion', 'secretaria_educacion', 'secretaria'] },
   { clave: 'municipio', nombre: 'Municipio', sinonimos: ['cole_mcpio_ubicacion', 'nombre_municipio', 'municipio', 'ciudad', 'mcpio'] },
   { clave: 'zona', nombre: 'Zona (urbana / rural)', sinonimos: ['cole_area_ubicacion', 'area_ubicacion', 'zona_ubicacion', 'zona', 'area', 'ubicacion', 'estu_area_reside'] },
   { clave: 'jornada', nombre: 'Jornada', sinonimos: ['cole_jornada', 'jornada'] },
-  { clave: 'genero', nombre: 'Género', sinonimos: ['estu_genero', 'genero', 'sexo'] },
-  { clave: 'naturaleza', nombre: 'Naturaleza (oficial / no oficial)', sinonimos: ['cole_naturaleza', 'naturaleza', 'sector'] },
+  { clave: 'genero', nombre: 'Sexo', sinonimos: ['estu_genero', 'genero', 'sexo'] },
+  { clave: 'naturaleza', nombre: 'Sector (oficial / no oficial)', sinonimos: ['cole_naturaleza', 'naturaleza', 'sector'] },
+  { clave: 'nse', nombre: 'Nivel socioeconómico (NSE)', sinonimos: ['estu_nse_individual', 'nse_individual', 'nivel_socioeconomico', 'nse', 'estu_nse_establecimiento', 'cole_nse_establecimiento'] },
   { clave: 'grupo', nombre: 'Grupo / curso', sinonimos: ['grupo', 'curso', 'salon', 'seccion', 'grado'] },
   { clave: 'lectura', nombre: 'Puntaje Lectura Crítica', numerico: true, sinonimos: ['punt_lectura_critica', 'puntaje_lectura_critica', 'lectura_critica', 'punt_lectura', 'lectura', 'lc'] },
   { clave: 'matematicas', nombre: 'Puntaje Matemáticas', numerico: true, sinonimos: ['punt_matematicas', 'puntaje_matematicas', 'matematicas', 'matematica', 'punt_mat', 'mat'] },
@@ -63,15 +66,49 @@ const CAMPOS = [
 // Variables por las que se puede agrupar y comparar.
 const DIMENSIONES = [
   { clave: 'anio', nombre: 'Año' },
-  { clave: 'colegio', nombre: 'Colegio' },
-  { clave: 'sede', nombre: 'Sede' },
+  { clave: 'region', nombre: 'Región' },
+  { clave: 'departamento', nombre: 'Departamento' },
+  { clave: 'etc', nombre: 'ETC' },
   { clave: 'municipio', nombre: 'Municipio' },
   { clave: 'zona', nombre: 'Zona (urbana / rural)' },
+  { clave: 'naturaleza', nombre: 'Sector' },
+  { clave: 'nse', nombre: 'Nivel socioeconómico' },
+  { clave: 'genero', nombre: 'Sexo' },
+  { clave: 'colegio', nombre: 'Colegio' },
+  { clave: 'sede', nombre: 'Sede' },
   { clave: 'jornada', nombre: 'Jornada' },
-  { clave: 'genero', nombre: 'Género' },
-  { clave: 'naturaleza', nombre: 'Naturaleza' },
   { clave: 'grupo', nombre: 'Grupo / curso' },
 ];
+
+// Regiones del país según el departamento del colegio (agrupación usada en los informes
+// nacionales de análisis Saber 11). Los nombres van sin tildes y en mayúsculas.
+const REGIONES = {
+  'Caribe': ['ATLANTICO', 'BOLIVAR', 'CESAR', 'CORDOBA', 'LA GUAJIRA', 'GUAJIRA', 'MAGDALENA', 'SAN ANDRES', 'SAN ANDRES Y PROVIDENCIA', 'ARCHIPIELAGO DE SAN ANDRES', 'SUCRE'],
+  'Eje Cafetero': ['ANTIOQUIA', 'CALDAS', 'QUINDIO', 'RISARALDA'],
+  'Pacífico': ['CAUCA', 'CHOCO', 'NARIÑO', 'VALLE', 'VALLE DEL CAUCA'],
+  'Central': ['BOGOTA', 'BOGOTA D.C.', 'BOGOTA DC', 'BOGOTA, D.C.', 'BOYACA', 'CUNDINAMARCA', 'HUILA', 'NORTE SANTANDER', 'NORTE DE SANTANDER', 'SANTANDER', 'TOLIMA'],
+  'Amazonía': ['AMAZONAS', 'CAQUETA', 'GUAINIA', 'GUAVIARE', 'PUTUMAYO', 'VAUPES'],
+  'Orinoquía': ['ARAUCA', 'CASANARE', 'META', 'VICHADA'],
+};
+
+function regionDe(departamento) {
+  const d = String(departamento || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/N\u0303/g, 'Ñ').trim();
+  if (!d) return '';
+  for (const [region, deptos] of Object.entries(REGIONES)) {
+    if (deptos.some((x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '') === d.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) return region;
+  }
+  if (d.startsWith('BOGOTA')) return 'Central';
+  if (d.startsWith('SAN ANDRES')) return 'Caribe';
+  return '';
+}
+
+// Colores fijos para las categorías que se repiten en todos los informes.
+const COLORES_CATEGORIA = {
+  OFICIAL: '#2563eb', 'NO OFICIAL': '#f59e0b',
+  URBANO: '#0891b2', RURAL: '#65a30d',
+  F: '#db2777', M: '#2563eb',
+  NSE1: '#dc2626', NSE2: '#f59e0b', NSE3: '#3b82f6', NSE4: '#16a34a',
+};
 
 // Fórmula oficial del puntaje global: promedio ponderado (inglés pesa 1, las demás 3) × 5.
 function calcularGlobal(lectura, matematicas, sociales, naturales, ingles) {

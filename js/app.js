@@ -8,7 +8,7 @@ const OPCIONES_LIMPIEZA = [
   { clave: 'resumen', nombre: 'Eliminar filas de totales/promedios y encabezados repetidos dentro de los datos' },
   { clave: 'textos', nombre: 'Normalizar textos de colegio, sede, jornada, etc. (espacios, mayúsculas y tildes), para que "San José" y "SAN JOSE " cuenten como el mismo' },
   { clave: 'genero', nombre: 'Estandarizar el género a F / M ("Femenino", "mujer", "f" → F)' },
-  { clave: 'zona', nombre: 'Estandarizar la zona a URBANO / RURAL ("Urbano", "U", "Cabecera" → URBANO; "Rural", "Resto" → RURAL)' },
+  { clave: 'zona', nombre: 'Estandarizar zona (URBANO / RURAL), sector (OFICIAL / NO OFICIAL) y nivel socioeconómico (NSE1 – NSE4). Ej.: "Urbana", "U" → URBANO; "Público" → OFICIAL; "2" → NSE2' },
   { clave: 'rango', nombre: 'Dejar vacíos los puntajes fuera de rango (0–100 por área, 0–500 el global)' },
   { clave: 'duplicados', nombre: 'Eliminar estudiantes repetidos (mismo identificador o nombre en el mismo año)' },
   { clave: 'calcularGlobal', nombre: 'Calcular el puntaje global cuando falte y estén las 5 áreas (fórmula oficial ICFES)' },
@@ -20,7 +20,7 @@ const estado = {
   datos: [],
   limpieza: null,
   desactualizado: false,
-  filtros: { anio: '', colegio: '', municipio: '', zona: '', jornada: '', genero: '' },
+  filtros: { anio: '', region: '', departamento: '', etc: '', municipio: '', zona: '', naturaleza: '', nse: '', genero: '', colegio: '', jornada: '' },
   opciones: Object.fromEntries(OPCIONES_LIMPIEZA.map((o) => [o.clave, true])),
   ui: {
     pestana: 'cargar',
@@ -28,8 +28,8 @@ const estado = {
     comparar: { dim: 'colegio', filas: 'colegio', columnas: 'anio', metrica: 'global', dimPrueba: 'genero', a: '', b: '', puntajePrueba: 'global' },
     corr: { nivel: 'estudiantes', metodo: 'pearson', x: 'lectura', y: 'sociales' },
     informe: {
-      titulo: 'Informe de resultados Saber 11', autor: '', notas: '', dims: ['colegio', 'municipio', 'zona'],
-      secciones: { resumen: true, conclusiones: true, descriptivas: true, niveles: true, comparacion: true, evolucion: true, correlaciones: true, limpieza: true },
+      titulo: '', autor: '', notas: '', anio: '', comparacion: '', territorio: '', maxTerritorios: 30,
+      secciones: { contexto: true, promedios: true, brechas: true, niveles: true, territorios: true, conclusiones: true, anexos: true },
     },
   },
   graficos: {},
@@ -51,7 +51,9 @@ const letraColumna = (j) => { let s = ''; j++; while (j > 0) { const m = (j - 1)
 
 function etiqueta(dim, v) {
   if (v === '' || v == null) return '(sin dato)';
-  if (dim === 'genero') return v === 'F' ? 'Femenino' : v === 'M' ? 'Masculino' : v;
+  if (dim === 'genero') return v === 'F' ? 'Mujeres' : v === 'M' ? 'Hombres' : v;
+  if (dim === 'naturaleza') return v === 'OFICIAL' ? 'Oficial' : v === 'NO OFICIAL' ? 'No oficial' : v;
+  if (dim === 'nse') return /^NSE\d$/.test(v) ? `NSE ${v.slice(3)}` : v;
   if (dim === 'zona') return v === 'URBANO' ? 'Urbana' : v === 'RURAL' ? 'Rural' : v;
   return String(v);
 }
@@ -685,7 +687,8 @@ function procesarDatos() {
 function filasLegibles(datos) {
   const presentes = (c) => datos.some((r) => r[c] !== '' && r[c] != null);
   const textos = [['archivo', 'Archivo'], ['fila', 'Fila en el archivo'], ['id', 'Identificador'], ['nombre', 'Nombre'], ['anio', 'Año'], ['colegio', 'Colegio'], ['sede', 'Sede'],
-    ['municipio', 'Municipio'], ['zona', 'Zona'], ['jornada', 'Jornada'], ['genero', 'Género'], ['naturaleza', 'Naturaleza'], ['grupo', 'Grupo']].filter(([c]) => presentes(c));
+    ['region', 'Región'], ['departamento', 'Departamento'], ['etc', 'ETC'], ['municipio', 'Municipio'], ['zona', 'Zona'], ['naturaleza', 'Sector'], ['jornada', 'Jornada'],
+    ['genero', 'Sexo'], ['nse', 'Nivel socioeconómico'], ['grupo', 'Grupo']].filter(([c]) => presentes(c));
   return datos.map((r) => {
     const o = {};
     for (const [c, t] of textos) o[t] = r[c];
@@ -753,7 +756,7 @@ function renderLimpiar() {
 // ============================================================
 
 function renderFiltros() {
-  const dims = ['anio', 'colegio', 'municipio', 'zona', 'jornada', 'genero'].filter((k) => valores(estado.datos, k).some((v) => v !== ''));
+  const dims = Object.keys(estado.filtros).filter((k) => valores(estado.datos, k).some((v) => v !== ''));
   const html = dims.map((k) => {
     const lista = [['', 'Todos'], ...valores(estado.datos, k).map((v) => [String(v), etiqueta(k, v)])];
     return `<label class="control">${esc(dimension(k).nombre)}<select data-filtro="${k}">${opcionesHtml(lista, estado.filtros[k])}</select></label>`;
@@ -956,87 +959,7 @@ function renderCorrelaciones() {
 //  7. Informe
 // ============================================================
 
-const SECCIONES = [
-  ['resumen', 'Resumen general'], ['conclusiones', 'Conclusiones automáticas'], ['descriptivas', 'Estadísticas descriptivas'],
-  ['niveles', 'Niveles de desempeño'], ['comparacion', 'Comparación por grupos'], ['evolucion', 'Evolución por año'],
-  ['correlaciones', 'Correlaciones'], ['limpieza', 'Anexo: limpieza de datos'],
-];
-
-function renderInforme() {
-  const cont = $('#tab-informe');
-  const d = filtrados();
-  if (!d.length) { cont.innerHTML = vacio(); return; }
-  const u = estado.ui.informe;
-  const dims = dimensionesDisponibles(d).filter((x) => x.clave !== 'anio').map((x) => [x.clave, x.nombre]);
-  const previo = $('#informe-doc');
-  cont.innerHTML = `<div class="tarjeta no-imprimir"><h2>Generar informe</h2>
-      <p class="nota">El informe usa los filtros de arriba (${esc(descripcionFiltros())}). Para guardarlo en PDF, pulse "Imprimir / Guardar PDF" y elija "Guardar como PDF" como impresora.</p>
-      <div class="fila-controles">
-        <label class="control" style="flex:1 1 280px">Título<input data-informe="titulo" value="${esc(u.titulo)}"></label>
-        <label class="control" style="flex:1 1 220px">Institución / autor<input data-informe="autor" value="${esc(u.autor)}" placeholder="Opcional"></label>
-      </div>
-      ${dims.length ? `<p class="nota" style="margin-bottom:0"><strong>Comparaciones a incluir</strong> (cada una con su tabla y gráfico${valores(d, 'anio').filter((v) => v !== '').length > 1 ? ', y su evolución por año' : ''}):</p>
-        <div class="opciones" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">${dims.map(([k, t]) => `<label><input type="checkbox" data-dim-informe="${k}"${u.dims.includes(k) ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>` : ''}
-      <div class="opciones" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">${SECCIONES.map(([k, t]) => `<label><input type="checkbox" data-seccion="${k}"${u.secciones[k] ? ' checked' : ''}> ${t}</label>`).join('')}</div>
-      <label class="control">Observaciones propias (aparecen al final del informe)<textarea data-informe="notas" placeholder="Ej.: acciones de mejora acordadas por el consejo académico…">${esc(u.notas)}</textarea></label>
-      <div class="fila-botones">
-        <button class="btn" id="btn-generar">Generar informe</button>
-        <button class="btn secundario" id="btn-imprimir">Imprimir / Guardar PDF</button>
-        <button class="btn secundario" data-accion-global="excel">Descargar resultados (Excel)</button>
-      </div></div>
-    <div id="informe-doc">${previo ? previo.innerHTML : ''}</div>`;
-}
-
-function generarInforme() {
-  const d = filtrados();
-  const u = estado.ui.informe;
-  const s = u.secciones;
-  const hoy = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
-  const anios = valores(d, 'anio').filter((v) => v !== '');
-  const colegios = valores(d, 'colegio').filter((v) => v !== '');
-  const img = (cfg, alto) => `<img src="${imagenDe(cfg, 900, alto)}" alt="">`;
-  let n = 0;
-  const h2 = (t) => `<h2>${++n}. ${t}</h2>`;
-  let html = `<div class="informe"><h1>${esc(u.titulo)}</h1>
-    <div class="meta">${u.autor ? esc(u.autor) + ' · ' : ''}${hoy}<br>Datos: ${esc(descripcionFiltros())} · ${d.length} estudiantes${colegios.length ? ` · ${colegios.length} colegio(s)` : ''}${anios.length ? ` · ${anios.length > 1 ? `años ${anios[0]}–${anios.at(-1)}` : `año ${anios[0]}`}` : ''}</div>`;
-
-  if (s.resumen) {
-    const g = Est.resumen(col(d, 'global'));
-    html += `<section>${h2('Resumen general')}<div class="cifras">
-      <div class="cifra"><div class="valor">${d.length}</div><div class="rotulo">Estudiantes</div></div>
-      <div class="cifra"><div class="valor">${fmt(g.media)}</div><div class="rotulo">Puntaje global promedio</div></div>
-      <div class="cifra"><div class="valor">${fmt(g.mediana)}</div><div class="rotulo">Mediana del global</div></div>
-      <div class="cifra"><div class="valor">${fmt(g.de)}</div><div class="rotulo">Desviación estándar</div></div></div>
-      ${img(cfgPromedios(d), 340)}</section>`;
-  }
-  if (s.conclusiones) html += `<section>${h2('Conclusiones principales')}<ul class="conclusiones">${conclusiones(d).map((c) => `<li>${c}</li>`).join('')}</ul></section>`;
-  if (s.descriptivas) html += `<section>${h2('Estadísticas descriptivas')}${htmlDescriptivas(d)}${img(cfgHistograma(d, GLOBAL), 320)}</section>`;
-  if (s.niveles) html += `<section>${h2('Niveles de desempeño')}${htmlNiveles(d)}${img(cfgNiveles(d, AREAS.slice(0, 4)), 300)}${img(cfgNiveles(d, [AREAS[4]]), 180)}</section>`;
-  if (s.comparacion) {
-    for (const k of DIMENSIONES.map((x) => x.clave).filter((x) => u.dims.includes(x) && x !== 'anio')) {
-      if (valores(d, k).filter((v) => v !== '').length < 2) continue;
-      html += `<section>${h2(`Comparación por ${dimension(k).nombre.toLowerCase()}`)}${htmlComparacion(d, k)}${img(cfgComparacionAreas(d, k), 360)}
-        ${anios.length > 1 ? `<h3>${esc(dimension(k).nombre)} por año — Puntaje Global</h3>${htmlCruzada(d, k, 'anio', GLOBAL)}` : ''}</section>`;
-    }
-  }
-  if (s.evolucion && anios.length > 1) {
-    html += `<section>${h2('Evolución por año')}${colegios.length > 1 && !(s.comparacion && u.dims.includes('colegio')) ? htmlCruzada(d, 'colegio', 'anio', GLOBAL) : ''}
-      ${img(cfgEvolucion(d, 'areas', GLOBAL), 340)}${colegios.length > 1 ? img(cfgEvolucion(d, 'colegio', GLOBAL), 340) : ''}</section>`;
-  }
-  if (s.correlaciones) {
-    const m = matrizCorrelacion(d, 'pearson');
-    html += `<section>${h2('Correlaciones entre pruebas')}<p class="nota">Coeficiente de Pearson a nivel de estudiante. Valores cercanos a 1 indican que las pruebas suben juntas.</p>${htmlMatriz(m)}</section>`;
-  }
-  if (s.limpieza && estado.limpieza) {
-    const l = estado.limpieza;
-    html += `<section>${h2('Anexo: limpieza de datos')}<p>Se leyeron ${l.leidas} filas de ${estado.archivos.length} archivo(s) y quedaron ${l.datos.length} registros válidos.</p>
-      ${l.pasos.length ? `<table><thead><tr><th class="texto">Paso</th><th>Cantidad</th></tr></thead><tbody>${l.pasos.map((p) => `<tr><td class="texto">${esc(p.texto)}</td><td>${p.cantidad}</td></tr>`).join('')}</tbody></table>` : '<p>No fue necesario corregir datos.</p>'}</section>`;
-  }
-  if (u.notas.trim()) html += `<section>${h2('Observaciones')}<p style="white-space:pre-wrap">${esc(u.notas)}</p></section>`;
-  html += '<p class="nota" style="margin-top:30px">Informe generado con Análisis Saber 11. Niveles de desempeño según los puntos de corte del ICFES.</p></div>';
-  $('#informe-doc').innerHTML = html;
-  $('#informe-doc').scrollIntoView({ behavior: 'smooth' });
-}
+// El informe estructurado está en js/informe.js (renderInforme, generarInforme).
 
 function exportarExcel() {
   const d = filtrados();
@@ -1136,11 +1059,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t.dataset.opcion) { estado.opciones[t.dataset.opcion] = t.checked; estado.desactualizado = true; }
     else if (t.dataset.ui) { asignarUI(t.dataset.ui, t.value); render(); }
     else if (t.dataset.seccion) estado.ui.informe.secciones[t.dataset.seccion] = t.checked;
-    else if (t.dataset.dimInforme) {
-      const lista = estado.ui.informe.dims.filter((k) => k !== t.dataset.dimInforme);
-      estado.ui.informe.dims = t.checked ? [...lista, t.dataset.dimInforme] : lista;
-    }
-    else if (t.dataset.informe) estado.ui.informe[t.dataset.informe] = t.value;
+
+    else if (t.dataset.informe) { estado.ui.informe[t.dataset.informe] = t.value; if (t.tagName === 'SELECT') renderInforme(); }
   });
   document.body.addEventListener('input', (e) => {
     if (e.target.dataset.informe && e.target.tagName !== 'SELECT') estado.ui.informe[e.target.dataset.informe] = e.target.value;
