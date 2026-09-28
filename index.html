@@ -1,82 +1,110 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Tutor Virtual</title>
-    <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; }
-        #respuesta { 
-            background-color: #f4f4f4; 
-            border-radius: 8px; 
-            padding: 16px; 
-            min-height: 100px; 
-            white-space: pre-wrap; /* Mantiene los saltos de línea */
-        }
-        #respuesta.error { /* Estilo para cuando hay un error */
-            background-color: #fff0f0;
-            color: #d00;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Análisis Saber 11</title>
+  <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
+  <div id="acceso" class="acceso">
+    <div class="acceso-panel">
+      <section class="acceso-info">
+        <div class="acceso-marca"><span class="logo">S11</span> Análisis Saber 11</div>
+        <h1>Plataforma de análisis de resultados del examen Saber 11°</h1>
+        <p>Cargue los resultados, límpielos y obtenga estadísticas, brechas educativas, niveles de desempeño e informes listos para compartir.</p>
+        <ul class="acceso-lista">
+          <li><strong>Puntajes promedio</strong> y su evolución entre años</li>
+          <li><strong>Brechas</strong> por nivel socioeconómico, sector, zona y sexo</li>
+          <li><strong>Niveles de desempeño</strong> por prueba</li>
+          <li><strong>Resultados territoriales</strong>: departamentos, ETC, municipios y colegios</li>
+          <li><strong>Informe completo</strong> con conclusiones, en PDF y Excel</li>
+        </ul>
+        <p class="acceso-privado">🔒 Los datos de los estudiantes se procesan solo en su navegador. No se envían ni se guardan en ningún servidor.</p>
+      </section>
+      <form id="form-acceso" class="acceso-form" autocomplete="on">
+        <h2 id="acceso-titulo">Ingresar</h2>
+        <p id="acceso-desc" class="nota"></p>
+        <label class="control">Nombre<input id="acc-nombre" autocomplete="name" required></label>
+        <label class="control">Institución o entidad<input id="acc-institucion" autocomplete="organization" placeholder="Opcional"></label>
+        <label class="control">Contraseña<input type="password" id="acc-clave" autocomplete="current-password" required></label>
+        <label class="control" id="acc-confirmar-caja" hidden>Confirmar contraseña<input type="password" id="acc-confirmar" autocomplete="new-password"></label>
+        <div id="acc-error" class="alerta error" hidden></div>
+        <button class="btn" type="submit" id="acc-boton">Ingresar</button>
+        <button type="button" class="btn-texto" id="acc-olvido">¿Olvidó su contraseña?</button>
+        <p class="nota acceso-aviso">La contraseña se guarda solo en este navegador y evita que otras personas usen la app en este computador.</p>
+      </form>
+    </div>
+  </div>
 
-    <h1>Mi Tutor Virtual</h1>
-    <p>Haz clic en el botón para pedirle un cuento al robot.</p>
+  <div id="app" hidden>
+  <header class="cabecera">
+    <div class="contenedor cabecera-fila">
+      <div>
+        <h1>📊 Análisis Saber 11</h1>
+        <p>Estadísticas, brechas, niveles de desempeño e informes del examen Saber 11°. <strong>Los datos se procesan solo en su navegador.</strong></p>
+      </div>
+      <div class="usuario"><span id="usuario-nombre"></span><button id="btn-salir" class="btn-salir">Salir</button></div>
+    </div>
+  </header>
 
-    <button id="miBoton">Preguntar a la IA</button>
+  <nav id="pestanas" class="pestanas">
+    <div class="contenedor">
+      <button data-tab="cargar" class="activa"><span>1</span> Cargar</button>
+      <button data-tab="limpiar"><span>2</span> Limpiar</button>
+      <button data-tab="estadisticas" disabled><span>3</span> Estadísticas</button>
+      <button data-tab="graficos" disabled><span>4</span> Gráficos</button>
+      <button data-tab="comparar" disabled><span>5</span> Comparar</button>
+      <button data-tab="correlaciones" disabled><span>6</span> Correlaciones</button>
+      <button data-tab="informe" disabled><span>7</span> Informe</button>
+    </div>
+  </nav>
 
-    <h2>Respuesta de la IA:</h2>
-    <div id="respuesta">...esperando...</div>
+  <section id="filtros" class="filtros" hidden>
+    <div class="contenedor" id="filtros-contenido"></div>
+  </section>
 
-    <script>
-        // ¡ESPERA A QUE LA PÁGINA ESTÉ LISTA!
-        document.addEventListener('DOMContentLoaded', () => {
-            
-            // 1. Ahora sí, encontramos los botones
-            const miBoton = document.getElementById('miBoton');
-            const panelRespuesta = document.getElementById('respuesta');
+  <main class="contenedor">
+    <section class="pestana" id="tab-cargar">
+      <div class="tarjeta">
+        <h2>1. Cargue los archivos de resultados</h2>
+        <p>Puede subir <strong>uno o varios archivos Excel (.xlsx, .xls) o CSV</strong>, por ejemplo uno por año o uno por colegio.
+          La app busca sola la fila de encabezados y reconoce las columnas del ICFES (PUNT_MATEMATICAS, PUNT_GLOBAL, COLE_NOMBRE_ESTABLECIMIENTO…).</p>
+        <label id="zona-carga" class="zona-carga">
+          <input type="file" id="entrada-archivos" accept=".xlsx,.xls,.xlsm,.csv,.txt" multiple>
+          <strong>Haga clic aquí o arrastre sus archivos</strong>
+          <span>Excel o CSV · puede seleccionar varios a la vez</span>
+        </label>
+        <div class="fila-botones">
+          <button id="btn-ejemplo" class="btn secundario">Probar con datos de ejemplo</button>
+          <button id="btn-descargar-ejemplo" class="btn-texto">Descargar el Excel de ejemplo</button>
+        </div>
+      </div>
+      <div id="lista-archivos"></div>
+      <div id="continuar-limpieza" class="fila-botones derecha" hidden>
+        <button class="btn" data-ir="limpiar">Continuar a la limpieza →</button>
+      </div>
+    </section>
 
-            // 2. Escuchamos cuando alguien hace clic
-            miBoton.onclick = async function() {
-                
-                // 3. Limpiamos errores y mostramos "Pensando..."
-                panelRespuesta.classList.remove('error');
-                panelRespuesta.innerText = "Pensando...";
-                miBoton.disabled = true;
+    <section class="pestana" id="tab-limpiar" hidden></section>
+    <section class="pestana" id="tab-estadisticas" hidden></section>
+    <section class="pestana" id="tab-graficos" hidden></section>
+    <section class="pestana" id="tab-comparar" hidden></section>
+    <section class="pestana" id="tab-correlaciones" hidden></section>
+    <section class="pestana" id="tab-informe" hidden></section>
+  </main>
 
-                // 4. ¡INTENTAMOS llamar a la cocina!
-                try {
-                    const response = await fetch('/api/chat');
+  </div>
 
-                    // Si la cocina devuelve un error (ej: 500)
-                    if (!response.ok) {
-                        // Lanza un error para que lo atrape el 'catch'
-                        throw new Error(`Error del servidor: ${response.status}`);
-                    }
+  <div id="avisos" class="avisos" aria-live="polite"></div>
 
-                    const data = await response.json();
-
-                    // Si la cocina SÍ mandó un JSON pero con un error dentro
-                    if (data.error) {
-                         throw new Error(`Error de la API: ${data.error}`);
-                    }
-
-                    // 5. ¡ÉXITO! Mostramos la respuesta
-                    panelRespuesta.innerText = data.respuesta;
-
-                } catch (error) {
-                    // 6. ¡FALLÓ! Mostramos el error en la caja
-                    console.error("Error al llamar al API:", error);
-                    panelRespuesta.innerText = `¡Oh no! Algo salió mal.\n\nDetalle: ${error.message}`;
-                    panelRespuesta.classList.add('error');
-                }
-
-                // 7. Pase lo que pase, volvemos a activar el botón
-                miBoton.disabled = false;
-            };
-        });
-    </script>
-
+  <script src="js/vendor/xlsx.full.min.js"></script>
+  <script src="js/vendor/chart.umd.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/estadistica.js"></script>
+  <script src="js/datos.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/informe.js"></script>
+  <script src="js/acceso.js"></script>
 </body>
 </html>
